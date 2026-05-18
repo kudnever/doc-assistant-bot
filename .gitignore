@@ -1,4 +1,4 @@
-data/
+data/*
 !data/.gitkeep
 .env
 __pycache__/
