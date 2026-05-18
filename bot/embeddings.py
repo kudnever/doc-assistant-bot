@@ -2,8 +2,6 @@ import hashlib
 import itertools
 import math
 
-import voyageai
-
 from .config import settings
 
 
@@ -14,6 +12,8 @@ def embed(texts: list[str]) -> list[list[float]]:
 
 
 def _voyage_embed(texts: list[str]) -> list[list[float]]:
+    import voyageai
+
     client = voyageai.Client(api_key=settings.voyage_api_key)
     vectors: list[list[float]] = []
     for i in range(0, len(texts), 128):
