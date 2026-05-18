@@ -91,10 +91,16 @@ def _retrieve(
         JOIN chunks AS c ON c.id = v.chunk_id
         JOIN documents AS d ON d.id = c.document_id
         WHERE v.embedding MATCH ?
+          AND v.k = ?
           AND d.user_id = ?
         ORDER BY v.distance
         LIMIT ?
         """,
-        (sqlite_vec.serialize_float32(query_vector), user_id, settings.top_k),
+        (
+            sqlite_vec.serialize_float32(query_vector),
+            settings.top_k,
+            user_id,
+            settings.top_k,
+        ),
     )
     return [dict(row) for row in cursor.fetchall()]
