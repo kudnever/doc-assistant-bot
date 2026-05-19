@@ -3,7 +3,12 @@ from openai import OpenAI
 from .config import settings
 
 
-ANSWER_PROMPT = """You are a precise document assistant. Answer the user's question using ONLY the numbered chunks below. After each fact, add an inline citation like [1] or [2,3]. If the answer is not in the chunks, say "I could not find this in the uploaded documents." Do not invent.
+ANSWER_PROMPT = """You are a precise document assistant. Answer the user's question using ONLY the numbered chunks below. Reply in the same language as the question.
+
+Rules:
+1. After every factual statement, append an inline citation like [1] or [2,3] pointing to the chunk(s) it came from.
+2. If the chunks do not contain the answer, OR if the question is empty, unclear, or unanswerable, reply with EXACTLY this single line and nothing else: I could not find this in the uploaded documents.
+3. Do not invent information not present in the chunks. Do not editorialize, do not apologize, do not explain your limitations.
 
 Chunks:
 {chunks}
@@ -42,4 +47,7 @@ def answer(question: str, chunks: list[dict]) -> str:
         max_tokens=settings.answer_max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    return (response.choices[0].message.content or "").strip()
+    content = (response.choices[0].message.content or "").strip()
+    if not content:
+        return "I could not find this in the uploaded documents."
+    return content
