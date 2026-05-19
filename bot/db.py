@@ -19,8 +19,19 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
+    existing = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE name = 'vec_chunks'"
+    ).fetchone()
+    if existing and f"FLOAT[{settings.embedding_dim}]" not in existing[0]:
+        import logging
+
+        logging.getLogger("doc-assistant").warning(
+            "vec_chunks dimension mismatch detected. Delete %s and restart to re-ingest with the new embedder.",
+            settings.db_path,
+        )
+
     conn.executescript(
-        """
+        f"""
         CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL,
@@ -37,7 +48,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
             chunk_id INTEGER PRIMARY KEY,
-            embedding FLOAT[512]
+            embedding FLOAT[{settings.embedding_dim}]
         );
         """
     )
