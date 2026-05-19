@@ -15,6 +15,11 @@ Single-process Python MVP using SQLite, sqlite-vec, fastembed (BGE small) embedd
 
 - PDF, DOCX, and TXT upload support
 - OpenRouter (DeepSeek V4 Flash) answers with inline citations
+- Bilingual EN/RU UI
+- Inline-keyboard navigation
+- Settings panel
+- Per-document deletion
+- Expandable source citations
 - Multi-user isolation by Telegram `user_id`
 - Vector search via sqlite-vec
 - One-file SQLite database at `data/bot.db`
@@ -121,6 +126,7 @@ doc-assistant-bot/
 - Chunking is character-based with overlap and soft paragraph/sentence breaks.
 - Citation behavior is enforced through the OpenRouter answer prompt.
 - Embeddings run locally on CPU via fastembed - no embedding API calls or keys needed; only the LLM provider key is required to run the bot.
+- Bilingual UI with per-user locale persisted in SQLite; all strings centralised in bot/i18n.py.
 
 ## Limitations / Roadmap
 
