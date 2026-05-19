@@ -5,11 +5,11 @@ from datetime import datetime
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from . import db, keyboards, parsers, rag
 from .config import settings
-from .i18n import t
+from .i18n import LOCALES, t
 
 
 router = Router()
@@ -168,6 +168,47 @@ async def question(message: Message) -> None:
     await message.answer(_answer_text(answer_text, sources, locale))
 
 
+@router.callback_query(F.data.startswith("lang:"))
+async def set_language(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    locale = callback.data.split(":", 1)[1]
+    if locale not in LOCALES:
+        await callback.answer()
+        return
+
+    db.set_locale(user_id, locale)
+    if callback.message and _is_settings_message(callback.message.text or ""):
+        await callback.message.edit_text(
+            _settings_text(user_id, locale),
+            reply_markup=keyboards.settings_keyboard(locale),
+        )
+    elif callback.message:
+        await callback.message.edit_text(
+            _welcome_text(locale),
+            reply_markup=keyboards.welcome_keyboard(locale),
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "settings")
+async def open_settings(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    locale = db.get_locale(user_id)
+    if callback.message:
+        await callback.message.answer(
+            _settings_text(user_id, locale),
+            reply_markup=keyboards.settings_keyboard(locale),
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "settings:close")
+async def close_settings(callback: CallbackQuery) -> None:
+    if callback.message:
+        await callback.message.delete()
+    await callback.answer()
+
+
 def _welcome_text(locale: str) -> str:
     return t("welcome", locale, max_file_mb=settings.max_file_mb)
 
@@ -293,6 +334,10 @@ def _not_found(answer_text: str) -> bool:
 
 def _locale_name(locale: str) -> str:
     return t(f"locale_name_{locale}", locale)
+
+
+def _is_settings_message(text: str) -> bool:
+    return text.startswith("<b>Settings</b>") or text.startswith("<b>Настройки</b>")
 
 
 def _format_date(value: str, locale: str) -> str:
