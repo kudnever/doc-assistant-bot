@@ -66,7 +66,13 @@ async def help_(message: Message) -> None:
 async def list_documents(message: Message) -> None:
     user_id = message.from_user.id
     locale = db.get_locale(user_id)
-    await message.answer(_documents_text(user_id, locale))
+    documents = _documents(user_id)
+    await message.answer(
+        _documents_text(user_id, locale, documents),
+        reply_markup=keyboards.documents_keyboard(documents, locale)
+        if documents
+        else None,
+    )
 
 
 @router.message(Command("settings"))
@@ -209,6 +215,48 @@ async def close_settings(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
+@router.callback_query(F.data.startswith("del:"))
+async def open_delete_document(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    locale = db.get_locale(user_id)
+    doc_id = int(callback.data.split(":", 1)[1])
+    document = _document(user_id, doc_id)
+    if callback.message and document:
+        await callback.message.edit_text(
+            t(
+                "delete_confirm",
+                locale,
+                filename=html.escape(str(document["filename"])),
+                date=_format_date(str(document["uploaded_at"]), locale),
+                chunk_count=document["chunk_count"],
+            ),
+            reply_markup=keyboards.delete_confirm_keyboard(doc_id, locale),
+        )
+    elif callback.message:
+        await _edit_documents_message(callback.message, user_id, locale)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("delc:"))
+async def confirm_delete_document(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    locale = db.get_locale(user_id)
+    doc_id = int(callback.data.split(":", 1)[1])
+    _delete_document(user_id, doc_id)
+    if callback.message:
+        await _edit_documents_message(callback.message, user_id, locale)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "delx")
+async def cancel_delete_document(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    locale = db.get_locale(user_id)
+    if callback.message:
+        await _edit_documents_message(callback.message, user_id, locale)
+    await callback.answer()
+
+
 def _welcome_text(locale: str) -> str:
     return t("welcome", locale, max_file_mb=settings.max_file_mb)
 
@@ -232,8 +280,21 @@ def _answer_text(answer_text: str, sources: list[dict], locale: str) -> str:
     )
 
 
-def _documents_text(user_id: int, locale: str) -> str:
+async def _edit_documents_message(message: Message, user_id: int, locale: str) -> None:
     documents = _documents(user_id)
+    await message.edit_text(
+        _documents_text(user_id, locale, documents),
+        reply_markup=keyboards.documents_keyboard(documents, locale)
+        if documents
+        else None,
+    )
+
+
+def _documents_text(
+    user_id: int, locale: str, documents: list[dict] | None = None
+) -> str:
+    if documents is None:
+        documents = _documents(user_id)
     if not documents:
         return t("list_empty", locale)
 
@@ -286,6 +347,53 @@ def _documents(user_id: int) -> list[dict]:
     finally:
         conn.close()
     return [dict(row) for row in rows]
+
+
+def _document(user_id: int, doc_id: int) -> dict | None:
+    conn = db.get_conn()
+    conn.row_factory = db.sqlite3.Row
+    try:
+        row = conn.execute(
+            """
+            SELECT
+                d.id,
+                d.filename,
+                d.uploaded_at,
+                COUNT(c.id) AS chunk_count
+            FROM documents AS d
+            LEFT JOIN chunks AS c ON c.document_id = d.id
+            WHERE d.user_id = ? AND d.id = ?
+            GROUP BY d.id
+            """,
+            (user_id, doc_id),
+        ).fetchone()
+    finally:
+        conn.close()
+    return dict(row) if row else None
+
+
+def _delete_document(user_id: int, doc_id: int) -> None:
+    conn = db.get_conn()
+    try:
+        with conn:
+            conn.execute(
+                """
+                DELETE FROM vec_chunks
+                WHERE chunk_id IN (
+                    SELECT c.id
+                    FROM chunks AS c
+                    JOIN documents AS d ON d.id = c.document_id
+                    WHERE d.user_id = ? AND d.id = ?
+                )
+                """,
+                (user_id, doc_id),
+            )
+            conn.execute(
+                "DELETE FROM documents WHERE user_id = ? AND id = ?",
+                (user_id, doc_id),
+            )
+    finally:
+        conn.close()
 
 
 def _account_counts(user_id: int) -> dict[str, int]:
