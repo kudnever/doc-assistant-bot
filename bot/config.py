@@ -5,14 +5,26 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     bot_token: str
-    anthropic_api_key: str
-    voyage_api_key: str = ""
+    openrouter_api_key: str
+
     db_path: str = "data/bot.db"
     chunk_size: int = 800
     chunk_overlap: int = 120
     top_k: int = 5
     max_file_mb: int = 20
-    answer_model: str = "claude-haiku-4-5-20251001"
+
+    # OpenRouter / model config
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    answer_model: str = "deepseek/deepseek-v4-flash:free"
+    answer_max_tokens: int = 1024
+
+    # Embeddings
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_dim: int = 384
+
+    # Optional OpenRouter ranking headers
+    app_url: str = "https://github.com/kudnever/doc-assistant-bot"
+    app_title: str = "doc-assistant-bot"
 
 
 settings = Settings()
