@@ -2,9 +2,9 @@ import os
 import pathlib
 
 
-MISSING_ANTHROPIC = not os.getenv("ANTHROPIC_API_KEY")
+MISSING_OPENROUTER = not os.getenv("OPENROUTER_API_KEY")
 os.environ.setdefault("BOT_TOKEN", "smoke-bot-token")
-os.environ.setdefault("ANTHROPIC_API_KEY", "smoke-anthropic-key")
+os.environ.setdefault("OPENROUTER_API_KEY", "smoke-openrouter-key")
 
 from bot import llm, rag  # noqa: E402
 from bot.config import settings  # noqa: E402
@@ -23,7 +23,7 @@ The CEO of Acme Robotics is Maya Chen. She previously led industrial automation 
 
 
 def main() -> int:
-    if MISSING_ANTHROPIC:
+    if MISSING_OPENROUTER:
         llm.answer = _offline_answer
 
     db_path = pathlib.Path(settings.db_path)
