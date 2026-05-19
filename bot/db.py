@@ -46,6 +46,11 @@ def init_schema(conn: sqlite3.Connection) -> None:
             text TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS user_prefs (
+            user_id INTEGER PRIMARY KEY,
+            locale TEXT NOT NULL DEFAULT 'en'
+        );
+
         CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
             chunk_id INTEGER PRIMARY KEY,
             embedding FLOAT[{settings.embedding_dim}]
@@ -53,3 +58,31 @@ def init_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+
+
+def get_locale(user_id: int) -> str:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT locale FROM user_prefs WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return row[0] if row else "en"
+
+
+def set_locale(user_id: int, locale: str) -> None:
+    conn = get_conn()
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO user_prefs (user_id, locale)
+                VALUES (?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET locale = excluded.locale
+                """,
+                (user_id, locale),
+            )
+    finally:
+        conn.close()
