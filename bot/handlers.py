@@ -512,6 +512,24 @@ def _upload_error_reason(error: str, locale: str) -> str:
         return t("error_unsupported_format", locale)
     if error == "no extractable text":
         return t("error_no_text", locale)
+    if error == "empty file":
+        return t("error_empty_file", locale)
+    if error.startswith("too many chunks"):
+        return t(
+            "error_too_many_chunks",
+            locale,
+            max_chunks_per_doc=settings.max_chunks_per_doc,
+        )
+    if error.startswith("document limit reached"):
+        return t(
+            "error_too_many_docs",
+            locale,
+            max_docs_per_user=settings.max_docs_per_user,
+        )
+    if error.startswith("docx expands"):
+        return t("error_zip_bomb", locale)
+    if error == "corrupt docx archive":
+        return t("error_corrupt_docx", locale)
     return html.escape(error)
 
 

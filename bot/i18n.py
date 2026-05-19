@@ -81,6 +81,26 @@ Max file size: {max_file_mb} MB""",
         "en": "Exceeds {max_file_mb} MB limit.",
         "ru": "Превышен лимит {max_file_mb} МБ.",
     },
+    "error_empty_file": {
+        "en": "The file is empty.",
+        "ru": "Файл пустой.",
+    },
+    "error_too_many_chunks": {
+        "en": "Document too large after splitting (cap: {max_chunks_per_doc} chunks).",
+        "ru": "Документ слишком большой после разбиения (лимит: {max_chunks_per_doc} фрагментов).",
+    },
+    "error_too_many_docs": {
+        "en": "Document limit reached ({max_docs_per_user}). Delete some via /list or /reset.",
+        "ru": "Достигнут лимит документов ({max_docs_per_user}). Удалите часть через /list или /reset.",
+    },
+    "error_zip_bomb": {
+        "en": "DOCX archive expands beyond the safety limit.",
+        "ru": "DOCX-архив превышает безопасный размер при распаковке.",
+    },
+    "error_corrupt_docx": {
+        "en": "The DOCX file is corrupt or not a valid archive.",
+        "ru": "DOCX-файл повреждён или не является корректным архивом.",
+    },
     "answer_message": {
         "en": "<b>Answer</b>\n{answer}\n\n<blockquote expandable><b>Sources</b>\n{sources}\n</blockquote>",
         "ru": "<b>Ответ</b>\n{answer}\n\n<blockquote expandable><b>Источники</b>\n{sources}\n</blockquote>",
