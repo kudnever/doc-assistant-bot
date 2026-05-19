@@ -1,14 +1,14 @@
 """Inline keyboard factories.
 
 Callback data prefixes:
-lang:<en|ru> - set locale
-settings - open settings panel
-settings:close - close settings
-settings:reset - open reset confirm
+lang:<locale>     - set locale (en, ru, es, de, fr, zh, pt)
+settings          - open settings panel
+settings:close    - close settings
+settings:reset    - open reset confirm
 reset:yes / reset:no - confirm/cancel full reset
-del:<doc_id> - open per-document delete confirm
-delc:<doc_id> - confirm delete one document
-delx - cancel any delete
+del:<doc_id>      - open per-document delete confirm
+delc:<doc_id>     - confirm delete one document
+delx              - cancel any delete
 """
 
 from aiogram.types import InlineKeyboardMarkup
@@ -17,22 +17,47 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from .i18n import t
 
 
+# Native-name button key per locale. Used by both the welcome row and the
+# settings language grid.
+_LANGUAGE_BUTTONS = {
+    "en": "button_english",
+    "ru": "button_russian",
+    "es": "button_spanish",
+    "de": "button_german",
+    "fr": "button_french",
+    "zh": "button_chinese",
+    "pt": "button_portuguese",
+}
+
+# Display order for the language picker. EN/RU first as the most common pair,
+# then the remaining five in alphabetical order of their two-letter code.
+_LANGUAGE_ORDER = ("en", "ru", "es", "de", "fr", "zh", "pt")
+
+
 def welcome_keyboard(locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=t("button_english", locale), callback_data="lang:en")
-    builder.button(text=t("button_russian", locale), callback_data="lang:ru")
+    for code in _LANGUAGE_ORDER:
+        builder.button(
+            text=t(_LANGUAGE_BUTTONS[code], locale),
+            callback_data=f"lang:{code}",
+        )
     builder.button(text=t("button_settings", locale), callback_data="settings")
-    builder.adjust(2, 1)
+    # 7 language buttons in a 2-column grid + Settings on its own row
+    builder.adjust(2, 2, 2, 1, 1)
     return builder.as_markup()
 
 
 def settings_keyboard(locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=_language_button("en", locale), callback_data="lang:en")
-    builder.button(text=_language_button("ru", locale), callback_data="lang:ru")
+    for code in _LANGUAGE_ORDER:
+        builder.button(
+            text=_language_button(code, locale),
+            callback_data=f"lang:{code}",
+        )
     builder.button(text=t("button_delete_all", locale), callback_data="settings:reset")
     builder.button(text=t("button_close", locale), callback_data="settings:close")
-    builder.adjust(2, 2)
+    # 7 language buttons (2-column grid, last row has 1) + 2 action buttons
+    builder.adjust(2, 2, 2, 1, 2)
     return builder.as_markup()
 
 
@@ -65,7 +90,8 @@ def delete_confirm_keyboard(doc_id: int, locale: str) -> InlineKeyboardMarkup:
 
 
 def _language_button(language: str, locale: str) -> str:
-    label = t("button_english" if language == "en" else "button_russian", locale)
+    """Render the language button label, marking it active when it matches."""
+    label = t(_LANGUAGE_BUTTONS[language], locale)
     if language == locale:
         return f"· {label}"
     return label
