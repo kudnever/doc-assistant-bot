@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     top_k: int = 5
     max_file_mb: int = 20
 
+    # Resource caps to defend against pathological uploads
+    max_chunks_per_doc: int = 200          # caps chunk count after splitting
+    max_docs_per_user: int = 20            # storage cap per Telegram user_id
+    max_uncompressed_mb: int = 100         # ZIP-bomb guard for DOCX archives
+
     # OpenRouter / model config
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     answer_model: str = "deepseek/deepseek-v4-flash:free"

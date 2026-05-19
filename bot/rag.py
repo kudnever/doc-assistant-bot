@@ -11,9 +11,18 @@ from .db import get_conn
 
 def ingest_document(user_id: int, filename: str, text: str) -> int:
     """Returns document_id."""
+    if count_user_documents(user_id) >= settings.max_docs_per_user:
+        raise ValueError(
+            f"document limit reached ({settings.max_docs_per_user})"
+        )
+
     chunks = chunk_text(text, settings.chunk_size, settings.chunk_overlap)
     if not chunks:
         raise ValueError("no extractable text")
+    if len(chunks) > settings.max_chunks_per_doc:
+        raise ValueError(
+            f"too many chunks ({len(chunks)} > {settings.max_chunks_per_doc})"
+        )
 
     vectors = embeddings.embed(chunks)
     conn = get_conn()
@@ -73,6 +82,18 @@ def answer_question(user_id: int, question: str) -> tuple[str, list[dict]]:
         for chunk in chunks
     ]
     return answer_text, sources
+
+
+def count_user_documents(user_id: int) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        return int(row[0]) if row else 0
+    finally:
+        conn.close()
 
 
 def _retrieve(
