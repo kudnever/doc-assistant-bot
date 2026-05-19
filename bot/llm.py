@@ -1,11 +1,6 @@
-import logging
-import time
-
-from openai import APIError, OpenAI, RateLimitError
+from openai import OpenAI
 
 from .config import settings
-
-log = logging.getLogger(__name__)
 
 
 ANSWER_PROMPT = """You are a precise document assistant. Answer the user's question using ONLY the numbered chunks below. After each fact, add an inline citation like [1] or [2,3]. If the answer is not in the chunks, say "I could not find this in the uploaded documents." Do not invent.
@@ -42,23 +37,9 @@ def answer(question: str, chunks: list[dict]) -> str:
     )
     prompt = ANSWER_PROMPT.format(chunks=formatted_chunks, question=question)
     client = _get_client()
-    for attempt in (1, 2):
-        try:
-            response = client.chat.completions.create(
-                model=settings.answer_model,
-                max_tokens=settings.answer_max_tokens,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return (response.choices[0].message.content or "").strip()
-        except RateLimitError:
-            if attempt == 1:
-                log.warning("rate limited by %s, retrying in 3s", settings.answer_model)
-                time.sleep(3)
-                continue
-            return (
-                "The free LLM tier is currently rate-limited. "
-                "Please try again in a minute, or set your own OpenRouter API key for higher limits."
-            )
-        except APIError as exc:
-            log.error("LLM API error: %s", exc)
-            return f"The LLM returned an error ({type(exc).__name__}). Please try again shortly."
+    response = client.chat.completions.create(
+        model=settings.answer_model,
+        max_tokens=settings.answer_max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return (response.choices[0].message.content or "").strip()
