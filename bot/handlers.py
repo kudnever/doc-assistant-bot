@@ -1,105 +1,125 @@
+import html
 import pathlib
 import tempfile
+from datetime import datetime
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from . import parsers, rag
+from . import db, keyboards, parsers, rag
 from .config import settings
-from .db import get_conn
+from .i18n import t
 
 
 router = Router()
 
+RU_MONTHS = {
+    1: "января",
+    2: "февраля",
+    3: "марта",
+    4: "апреля",
+    5: "мая",
+    6: "июня",
+    7: "июля",
+    8: "августа",
+    9: "сентября",
+    10: "октября",
+    11: "ноября",
+    12: "декабря",
+}
+
+EN_MONTHS = {
+    1: "January",
+    2: "February",
+    3: "March",
+    4: "April",
+    5: "May",
+    6: "June",
+    7: "July",
+    8: "August",
+    9: "September",
+    10: "October",
+    11: "November",
+    12: "December",
+}
+
 
 @router.message(Command("start"))
 async def start(message: Message) -> None:
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
     await message.answer(
-        "Send me a PDF, DOCX, or TXT file. Then ask any question about its content. "
-        "/help for more, /list to see your uploads, /reset to delete all your data."
+        _welcome_text(locale),
+        reply_markup=keyboards.welcome_keyboard(locale),
     )
 
 
 @router.message(Command("help"))
 async def help_(message: Message) -> None:
-    await message.answer(
-        "Upload a PDF, DOCX, or TXT file up to "
-        f"{settings.max_file_mb} MB. I will extract the text, index it, and answer "
-        "questions using only your uploaded documents. Answers include inline citations "
-        "like [1] and a Sources footer."
-    )
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
+    await message.answer(t("help", locale, max_file_mb=settings.max_file_mb))
 
 
 @router.message(Command("list"))
 async def list_documents(message: Message) -> None:
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            """
-            SELECT filename, uploaded_at
-            FROM documents
-            WHERE user_id = ?
-            ORDER BY uploaded_at DESC
-            """,
-            (message.from_user.id,),
-        ).fetchall()
-    finally:
-        conn.close()
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
+    await message.answer(_documents_text(user_id, locale))
 
-    if not rows:
-        await message.answer("You have no uploaded documents.")
-        return
 
-    lines = [
-        f"{i}. {filename} ({uploaded_at})"
-        for i, (filename, uploaded_at) in enumerate(rows, start=1)
-    ]
-    await message.answer("\n".join(lines))
+@router.message(Command("settings"))
+async def settings_(message: Message) -> None:
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
+    await message.answer(
+        _settings_text(user_id, locale),
+        reply_markup=keyboards.settings_keyboard(locale),
+    )
 
 
 @router.message(Command("reset"))
 async def reset(message: Message) -> None:
-    conn = get_conn()
-    try:
-        count = conn.execute(
-            "SELECT COUNT(*) FROM documents WHERE user_id = ?",
-            (message.from_user.id,),
-        ).fetchone()[0]
-        with conn:
-            conn.execute(
-                """
-                DELETE FROM vec_chunks
-                WHERE chunk_id IN (
-                    SELECT c.id
-                    FROM chunks AS c
-                    JOIN documents AS d ON d.id = c.document_id
-                    WHERE d.user_id = ?
-                )
-                """,
-                (message.from_user.id,),
-            )
-            conn.execute(
-                "DELETE FROM documents WHERE user_id = ?",
-                (message.from_user.id,),
-            )
-    finally:
-        conn.close()
-
-    await message.answer(f"Removed {count} document(s).")
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
+    counts = _account_counts(user_id)
+    await message.answer(
+        t(
+            "reset_confirm",
+            locale,
+            doc_count=counts["doc_count"],
+            chunk_count=counts["chunk_count"],
+        ),
+        reply_markup=keyboards.reset_confirm_keyboard(locale),
+    )
 
 
 @router.message(F.document)
 async def upload_document(message: Message) -> None:
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
     document = message.document
+    filename = document.file_name or t("default_filename", locale)
+    safe_filename = html.escape(filename)
+    progress = await message.answer(t("processing", locale, filename=safe_filename))
+
     if document.file_size and document.file_size > settings.max_file_mb * 1024 * 1024:
-        await message.answer(
-            f"That file is too large. Please upload files up to {settings.max_file_mb} MB."
+        await progress.edit_text(
+            t(
+                "upload_error",
+                locale,
+                filename=safe_filename,
+                error_reason=t(
+                    "error_too_large",
+                    locale,
+                    max_file_mb=settings.max_file_mb,
+                ),
+            )
         )
         return
 
-    suffix = pathlib.Path(document.file_name or "").suffix
-    progress = await message.answer("⏳ Processing…")
+    suffix = pathlib.Path(filename).suffix
     temp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
@@ -107,34 +127,149 @@ async def upload_document(message: Message) -> None:
             await message.bot.download(document.file_id, destination=temp_file)
 
         text = parsers.extract_text(temp_path)
-        document_id = rag.ingest_document(
-            message.from_user.id, document.file_name or "document", text
-        )
+        document_id = rag.ingest_document(user_id, filename, text)
         chunk_count = _chunk_count(document_id)
         await progress.edit_text(
-            f"Indexed {document.file_name or 'document'} into {chunk_count} chunk(s)."
+            t(
+                "indexed",
+                locale,
+                filename=safe_filename,
+                chunk_count=chunk_count,
+            )
         )
     except ValueError as exc:
-        await progress.edit_text(str(exc))
+        await progress.edit_text(
+            t(
+                "upload_error",
+                locale,
+                filename=safe_filename,
+                error_reason=_upload_error_reason(str(exc), locale),
+            )
+        )
     finally:
         if temp_path and temp_path.exists():
             temp_path.unlink()
 
 
-@router.message(F.text)
+@router.message(F.text & ~F.text.startswith("/"))
 async def question(message: Message) -> None:
-    answer_text, sources = rag.answer_question(message.from_user.id, message.text)
-    await message.answer(answer_text)
-    if sources:
-        footer = "\n".join(
-            f"{i}. {source['filename']} chunk {source['idx']}"
-            for i, source in enumerate(sources, start=1)
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
+    try:
+        answer_text, sources = rag.answer_question(user_id, message.text)
+    except Exception:
+        await message.answer(t("rate_limited", locale))
+        return
+
+    if _not_found(answer_text):
+        await message.answer(t("answer_not_found", locale))
+        return
+
+    await message.answer(_answer_text(answer_text, sources, locale))
+
+
+def _welcome_text(locale: str) -> str:
+    return t("welcome", locale, max_file_mb=settings.max_file_mb)
+
+
+def _answer_text(answer_text: str, sources: list[dict], locale: str) -> str:
+    source_lines = [
+        t(
+            "source_line",
+            locale,
+            number=i,
+            filename=html.escape(str(source["filename"])),
+            idx=source["idx"],
         )
-        await message.answer(f"Sources:\n{footer}")
+        for i, source in enumerate(sources, start=1)
+    ]
+    return t(
+        "answer_message",
+        locale,
+        answer=html.escape(answer_text),
+        sources="\n".join(source_lines),
+    )
+
+
+def _documents_text(user_id: int, locale: str) -> str:
+    documents = _documents(user_id)
+    if not documents:
+        return t("list_empty", locale)
+
+    lines = [t("list_header", locale)]
+    for i, document in enumerate(documents, start=1):
+        lines.append("")
+        lines.append(
+            t(
+                "list_item",
+                locale,
+                number=i,
+                filename=html.escape(str(document["filename"])),
+                date=_format_date(str(document["uploaded_at"]), locale),
+                chunk_count=document["chunk_count"],
+            )
+        )
+    return "\n".join(lines)
+
+
+def _settings_text(user_id: int, locale: str) -> str:
+    counts = _account_counts(user_id)
+    return t(
+        "settings",
+        locale,
+        locale_name=_locale_name(locale),
+        doc_count=counts["doc_count"],
+        chunk_count=counts["chunk_count"],
+    )
+
+
+def _documents(user_id: int) -> list[dict]:
+    conn = db.get_conn()
+    conn.row_factory = db.sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                d.id,
+                d.filename,
+                d.uploaded_at,
+                COUNT(c.id) AS chunk_count
+            FROM documents AS d
+            LEFT JOIN chunks AS c ON c.document_id = d.id
+            WHERE d.user_id = ?
+            GROUP BY d.id
+            ORDER BY d.uploaded_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [dict(row) for row in rows]
+
+
+def _account_counts(user_id: int) -> dict[str, int]:
+    conn = db.get_conn()
+    try:
+        doc_count = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()[0]
+        chunk_count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM chunks AS c
+            JOIN documents AS d ON d.id = c.document_id
+            WHERE d.user_id = ?
+            """,
+            (user_id,),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    return {"doc_count": doc_count, "chunk_count": chunk_count}
 
 
 def _chunk_count(document_id: int) -> int:
-    conn = get_conn()
+    conn = db.get_conn()
     try:
         return conn.execute(
             "SELECT COUNT(*) FROM chunks WHERE document_id = ?",
@@ -142,3 +277,25 @@ def _chunk_count(document_id: int) -> int:
         ).fetchone()[0]
     finally:
         conn.close()
+
+
+def _upload_error_reason(error: str, locale: str) -> str:
+    if error.startswith("unsupported file type"):
+        return t("error_unsupported_format", locale)
+    if error == "no extractable text":
+        return t("error_no_text", locale)
+    return html.escape(error)
+
+
+def _not_found(answer_text: str) -> bool:
+    return answer_text.strip() == "I could not find this in the uploaded documents."
+
+
+def _locale_name(locale: str) -> str:
+    return t(f"locale_name_{locale}", locale)
+
+
+def _format_date(value: str, locale: str) -> str:
+    date = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    months = RU_MONTHS if locale == "ru" else EN_MONTHS
+    return f"{date.day} {months[date.month]} {date.year}"
