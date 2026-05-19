@@ -1,15 +1,13 @@
 # Doc-Assistant Bot
 
-Doc-Assistant Bot - Telegram RAG assistant for PDF/DOCX. Upload -> ask -> get cited answers.
-Single-process Python MVP using SQLite, sqlite-vec, fastembed (BGE small) embeddings, and OpenRouter (DeepSeek V4 Flash) answers.
+Telegram RAG assistant for PDF/DOCX/TXT. Upload a document, ask a question, get a cited answer.
+Single-process Python with SQLite, sqlite-vec, fastembed (multilingual MiniLM) embeddings, and OpenRouter (DeepSeek V4 Flash) for answer generation.
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Stack](https://img.shields.io/badge/stack-aiogram%20%7C%20OpenRouter%20%7C%20sqlite--vec-lightgrey)
 
-## Demo
-
-![Demo](docs/demo.gif)
+**Live demo:** [@assistantdocumentbot](https://t.me/assistantdocumentbot) — may be offline when the maintainer's machine is off. Deploy your own in five minutes with the setup section below.
 
 ## Features
 
