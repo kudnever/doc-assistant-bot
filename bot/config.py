@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     answer_model: str = "deepseek/deepseek-v4-flash:free"
     answer_max_tokens: int = 1024
 
-    # Embeddings
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    # Embeddings — multilingual model supporting 100+ languages (EN/RU/DE/etc.)
+    embedding_model: str = "intfloat/multilingual-e5-small"
     embedding_dim: int = 384
 
     # Optional OpenRouter ranking headers
