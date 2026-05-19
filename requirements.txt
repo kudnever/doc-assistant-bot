@@ -1,7 +1,7 @@
 aiogram>=3,<4
-anthropic>=0.40
+openai>=1.55,<2
+fastembed>=0.4,<1
 sqlite-vec>=0.1.6
 pypdf>=5,<7
 python-docx>=1,<2
 pydantic-settings>=2,<3
-voyageai>=0.3; python_version < "3.14"
