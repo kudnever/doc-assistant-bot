@@ -4,6 +4,7 @@ import tempfile
 from datetime import datetime
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
@@ -13,6 +14,15 @@ from .i18n import LOCALES, t
 
 
 router = Router()
+
+
+async def _safe_edit_text(message, text, **kwargs):
+    """Edit a message, swallowing the harmless 'message is not modified' 400."""
+    try:
+        await message.edit_text(text, **kwargs)
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc):
+            raise
 
 RU_MONTHS = {
     1: "января",
@@ -188,12 +198,12 @@ async def set_language(callback: CallbackQuery) -> None:
         message_text = callback.message.html_text or callback.message.text or ""
 
     if callback.message and _is_settings_message(message_text):
-        await callback.message.edit_text(
+        await _safe_edit_text(callback.message,
             _settings_text(user_id, locale),
             reply_markup=keyboards.settings_keyboard(locale),
         )
     elif callback.message:
-        await callback.message.edit_text(
+        await _safe_edit_text(callback.message,
             _welcome_text(locale),
             reply_markup=keyboards.welcome_keyboard(locale),
         )
@@ -225,7 +235,7 @@ async def open_reset_confirm(callback: CallbackQuery) -> None:
     locale = db.get_locale(user_id)
     counts = _account_counts(user_id)
     if callback.message:
-        await callback.message.edit_text(
+        await _safe_edit_text(callback.message,
             t(
                 "reset_confirm",
                 locale,
@@ -243,7 +253,7 @@ async def confirm_reset(callback: CallbackQuery) -> None:
     locale = db.get_locale(user_id)
     _delete_all_user_data(user_id)
     if callback.message:
-        await callback.message.edit_text(t("reset_done", locale))
+        await _safe_edit_text(callback.message,t("reset_done", locale))
     await callback.answer()
 
 
@@ -252,7 +262,7 @@ async def cancel_reset(callback: CallbackQuery) -> None:
     user_id = callback.from_user.id
     locale = db.get_locale(user_id)
     if callback.message:
-        await callback.message.edit_text(
+        await _safe_edit_text(callback.message,
             _settings_text(user_id, locale),
             reply_markup=keyboards.settings_keyboard(locale),
         )
@@ -266,7 +276,7 @@ async def open_delete_document(callback: CallbackQuery) -> None:
     doc_id = int(callback.data.split(":", 1)[1])
     document = _document(user_id, doc_id)
     if callback.message and document:
-        await callback.message.edit_text(
+        await _safe_edit_text(callback.message,
             t(
                 "delete_confirm",
                 locale,
@@ -326,7 +336,8 @@ def _answer_text(answer_text: str, sources: list[dict], locale: str) -> str:
 
 async def _edit_documents_message(message: Message, user_id: int, locale: str) -> None:
     documents = _documents(user_id)
-    await message.edit_text(
+    await _safe_edit_text(
+        message,
         _documents_text(user_id, locale, documents),
         reply_markup=keyboards.documents_keyboard(documents, locale)
         if documents
