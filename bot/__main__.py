@@ -21,10 +21,6 @@ async def main():
     finally:
         conn.close()
 
-    if not settings.voyage_api_key:
-        log.warning(
-            "VOYAGE_API_KEY missing - using stub embedder, retrieval will not work meaningfully"
-        )
     bot = Bot(settings.bot_token)
     dp = Dispatcher()
     dp.include_router(router)
