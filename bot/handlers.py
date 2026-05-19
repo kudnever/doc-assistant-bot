@@ -183,7 +183,11 @@ async def set_language(callback: CallbackQuery) -> None:
         return
 
     db.set_locale(user_id, locale)
-    if callback.message and _is_settings_message(callback.message.text or ""):
+    message_text = ""
+    if callback.message:
+        message_text = callback.message.html_text or callback.message.text or ""
+
+    if callback.message and _is_settings_message(message_text):
         await callback.message.edit_text(
             _settings_text(user_id, locale),
             reply_markup=keyboards.settings_keyboard(locale),
@@ -212,6 +216,46 @@ async def open_settings(callback: CallbackQuery) -> None:
 async def close_settings(callback: CallbackQuery) -> None:
     if callback.message:
         await callback.message.delete()
+    await callback.answer()
+
+
+@router.callback_query(F.data == "settings:reset")
+async def open_reset_confirm(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    locale = db.get_locale(user_id)
+    counts = _account_counts(user_id)
+    if callback.message:
+        await callback.message.edit_text(
+            t(
+                "reset_confirm",
+                locale,
+                doc_count=counts["doc_count"],
+                chunk_count=counts["chunk_count"],
+            ),
+            reply_markup=keyboards.reset_confirm_keyboard(locale),
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "reset:yes")
+async def confirm_reset(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    locale = db.get_locale(user_id)
+    _delete_all_user_data(user_id)
+    if callback.message:
+        await callback.message.edit_text(t("reset_done", locale))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "reset:no")
+async def cancel_reset(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    locale = db.get_locale(user_id)
+    if callback.message:
+        await callback.message.edit_text(
+            _settings_text(user_id, locale),
+            reply_markup=keyboards.settings_keyboard(locale),
+        )
     await callback.answer()
 
 
@@ -396,6 +440,30 @@ def _delete_document(user_id: int, doc_id: int) -> None:
         conn.close()
 
 
+def _delete_all_user_data(user_id: int) -> None:
+    conn = db.get_conn()
+    try:
+        with conn:
+            conn.execute(
+                """
+                DELETE FROM vec_chunks
+                WHERE chunk_id IN (
+                    SELECT c.id
+                    FROM chunks AS c
+                    JOIN documents AS d ON d.id = c.document_id
+                    WHERE d.user_id = ?
+                )
+                """,
+                (user_id,),
+            )
+            conn.execute(
+                "DELETE FROM documents WHERE user_id = ?",
+                (user_id,),
+            )
+    finally:
+        conn.close()
+
+
 def _account_counts(user_id: int) -> dict[str, int]:
     conn = db.get_conn()
     try:
@@ -445,7 +513,12 @@ def _locale_name(locale: str) -> str:
 
 
 def _is_settings_message(text: str) -> bool:
-    return text.startswith("<b>Settings</b>") or text.startswith("<b>Настройки</b>")
+    return (
+        text.startswith("<b>Settings</b>")
+        or text.startswith("<b>Настройки</b>")
+        or text.startswith("Settings")
+        or text.startswith("Настройки")
+    )
 
 
 def _format_date(value: str, locale: str) -> str:
