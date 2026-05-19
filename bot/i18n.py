@@ -169,6 +169,10 @@ Max file size: {max_file_mb} MB""",
         "en": "Confirm",
         "ru": "Подтвердить",
     },
+    "default_filename": {
+        "en": "document",
+        "ru": "document",
+    },
 }
 
 
