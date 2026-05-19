@@ -541,13 +541,14 @@ def _locale_name(locale: str) -> str:
     return t(f"locale_name_{locale}", locale)
 
 
+_SETTINGS_HEADERS_HTML = tuple(
+    f"<b>{t('button_settings', loc)}</b>" for loc in LOCALES
+)
+_SETTINGS_HEADERS_PLAIN = tuple(t("button_settings", loc) for loc in LOCALES)
+
+
 def _is_settings_message(text: str) -> bool:
-    return (
-        text.startswith("<b>Settings</b>")
-        or text.startswith("<b>Настройки</b>")
-        or text.startswith("Settings")
-        or text.startswith("Настройки")
-    )
+    return text.startswith(_SETTINGS_HEADERS_HTML) or text.startswith(_SETTINGS_HEADERS_PLAIN)
 
 
 def _format_date(value: str, locale: str) -> str:
