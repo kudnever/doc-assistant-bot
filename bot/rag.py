@@ -96,6 +96,55 @@ def count_user_documents(user_id: int) -> int:
         conn.close()
 
 
+def get_document_context(
+    user_id: int, document_id: int | None = None, max_chunks: int = 8
+) -> dict | None:
+    """Return an owned document and its first chunks for source-grounded artifacts."""
+    conn = get_conn()
+    conn.row_factory = sqlite3.Row
+    try:
+        if document_id is None:
+            document = conn.execute(
+                """
+                SELECT id, filename, uploaded_at
+                FROM documents
+                WHERE user_id = ?
+                ORDER BY uploaded_at DESC, id DESC
+                LIMIT 1
+                """,
+                (user_id,),
+            ).fetchone()
+        else:
+            document = conn.execute(
+                """
+                SELECT id, filename, uploaded_at
+                FROM documents
+                WHERE user_id = ? AND id = ?
+                """,
+                (user_id, document_id),
+            ).fetchone()
+        if not document:
+            return None
+
+        chunks = conn.execute(
+            """
+            SELECT idx, text
+            FROM chunks
+            WHERE document_id = ?
+            ORDER BY idx
+            LIMIT ?
+            """,
+            (document["id"], max_chunks),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return {
+        "document": dict(document),
+        "chunks": [dict(chunk) for chunk in chunks],
+    }
+
+
 def _retrieve(
     conn: sqlite3.Connection, user_id: int, query_vector: list[float]
 ) -> list[dict]:

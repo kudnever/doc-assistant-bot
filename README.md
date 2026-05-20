@@ -17,6 +17,8 @@ Single-process Python with SQLite, sqlite-vec, fastembed (multilingual MiniLM) e
 - Bilingual EN/RU UI
 - Inline-keyboard navigation
 - Settings panel
+- Clear `/privacy` disclosure for sensitive-document handling
+- NotebookLM-style studio actions: overview, brief, FAQ, quiz, and mind map
 - Per-document deletion
 - Expandable source citations
 - Multi-user isolation by Telegram `user_id`
@@ -87,6 +89,7 @@ pytest -q
 | --- | --- | --- |
 | `BOT_TOKEN` | Yes | Telegram bot token from BotFather. |
 | `OPENROUTER_API_KEY` | Yes | API key used for OpenRouter DeepSeek V4 Flash answers. |
+| `MAX_CHUNKS_PER_DOC` | No | Maximum chunks per uploaded document after parsing and splitting. Defaults to `1200`. |
 
 ## Commands
 
@@ -94,6 +97,11 @@ pytest -q
 | --- | --- |
 | `/start` | Shows the short welcome message. |
 | `/help` | Explains upload formats, size limit, and citations. |
+| `/privacy` | Explains what is stored locally, what is sent to the LLM provider, and how deletion works. |
+| `/brief` | Creates an executive summary for the latest uploaded document. |
+| `/faq` | Creates source-grounded questions and answers for the latest uploaded document. |
+| `/quiz` | Starts an interactive quiz for the latest uploaded document. |
+| `/mindmap` | Creates a text topic map for the latest uploaded document. |
 | `/list` | Lists your uploaded documents. |
 | `/reset` | Deletes all documents and chunks for your Telegram user. |
 | Send a file | Uploads and indexes a PDF, DOCX, or TXT file. |
@@ -129,10 +137,32 @@ doc-assistant-bot/
 
 - sqlite-vec extension loading happens on each new SQLite connection.
 - Retrieval is filtered by Telegram `user_id`, so users only see their own documents.
+- Uploaded files are downloaded to a temporary file, parsed, indexed, and then removed from temp storage.
 - Chunking is character-based with overlap and soft paragraph/sentence breaks.
 - Citation behavior is enforced through the OpenRouter answer prompt.
-- Embeddings run locally on CPU via fastembed - no embedding API calls or keys needed; only the LLM provider key is required to run the bot.
+- Embeddings run locally on CPU via fastembed - no embedding API calls or keys needed.
+- Answer generation sends the user's question and retrieved text chunks to the configured OpenRouter model.
 - Bilingual UI with per-user locale persisted in SQLite; all strings centralised in bot/i18n.py.
+
+## Telegram Profile Copy
+
+Use this in BotFather so the bot's promise is clear before a user uploads a file.
+
+**Short description**
+
+```text
+Ask questions about PDF, DOCX, and TXT files with cited answers. Local embeddings, per-user document isolation, and deletion controls.
+```
+
+**Description**
+
+```text
+Document Assistant reads PDF, DOCX, and TXT files and answers questions using cited passages from your documents.
+
+Security model: documents are indexed for your Telegram account, embeddings run locally, and only the relevant text fragments plus your question are sent to the configured LLM provider for answer generation. Use /privacy for details, /list to delete one document, or /reset to delete all your data.
+```
+
+See [SECURITY.md](SECURITY.md) for the trust model and production hardening roadmap.
 
 ## Limitations / Roadmap
 

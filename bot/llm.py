@@ -51,3 +51,13 @@ def answer(question: str, chunks: list[dict]) -> str:
     if not content:
         return "I could not find this in the uploaded documents."
     return content
+
+
+def complete(prompt: str, max_tokens: int | None = None) -> str:
+    client = _get_client()
+    response = client.chat.completions.create(
+        model=settings.answer_model,
+        max_tokens=max_tokens or settings.answer_max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return (response.choices[0].message.content or "").strip()

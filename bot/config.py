@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     max_file_mb: int = 20
 
     # Resource caps to defend against pathological uploads
-    max_chunks_per_doc: int = 200          # caps chunk count after splitting
+    max_chunks_per_doc: int = 1200         # caps chunk count after splitting
     max_docs_per_user: int = 20            # storage cap per Telegram user_id
     max_uncompressed_mb: int = 100         # ZIP-bomb guard for DOCX archives
 
