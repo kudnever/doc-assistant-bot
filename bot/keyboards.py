@@ -89,12 +89,20 @@ def reset_confirm_keyboard(locale: str) -> InlineKeyboardMarkup:
 def documents_keyboard(documents: list[dict], locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for document in documents:
+        doc_id = document["id"]
         filename = _truncate_filename(str(document["filename"]))
+        for kind, key in (
+            ("brief", "button_brief"),
+            ("faq", "button_faq"),
+            ("quiz", "button_quiz"),
+            ("mindmap", "button_mindmap"),
+        ):
+            builder.button(text=t(key, locale), callback_data=f"studio:{kind}:{doc_id}")
         builder.button(
             text=t("button_delete_document", locale, filename=filename),
-            callback_data=f"del:{document['id']}",
+            callback_data=f"del:{doc_id}",
         )
-    builder.adjust(*([1] * len(documents)))
+    builder.adjust(*([3, 2] * len(documents)))
     return builder.as_markup()
 
 
