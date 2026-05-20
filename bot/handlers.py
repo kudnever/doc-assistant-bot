@@ -323,6 +323,7 @@ def _answer_text(answer_text: str, sources: list[dict], locale: str) -> str:
             number=i,
             filename=html.escape(str(source["filename"])),
             idx=source["idx"],
+            preview=html.escape(str(source.get("text_preview", ""))),
         )
         for i, source in enumerate(sources, start=1)
     ]
