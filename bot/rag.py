@@ -5,7 +5,7 @@ import logging
 
 import sqlite_vec
 
-from . import embeddings, llm, tokens
+from . import embeddings, llm, query_expansion, tokens
 from .chunker import chunk_text
 from .config import settings
 from .db import get_conn
@@ -67,10 +67,17 @@ def answer_question(
     (still enforcing user_id ownership). Otherwise retrieval spans all
     documents owned by the user.
     """
-    query_vector = embeddings.embed([question])[0]
+    queries = (
+        query_expansion.expand(question, n=settings.multi_query_variants)
+        if settings.multi_query_enabled
+        else [question]
+    )
+    query_vectors = embeddings.embed(queries) if queries else []
     conn = get_conn()
     try:
-        rows = _retrieve(conn, user_id, query_vector, document_id=document_id)
+        rows = _retrieve_multi(
+            conn, user_id, query_vectors, document_id=document_id
+        )
     finally:
         conn.close()
 
@@ -172,6 +179,33 @@ def get_document_context(
         "document": dict(document),
         "chunks": [dict(chunk) for chunk in chunks],
     }
+
+
+def _retrieve_multi(
+    conn: sqlite3.Connection,
+    user_id: int,
+    query_vectors: list[list[float]],
+    document_id: int | None = None,
+) -> list[dict]:
+    """Retrieve across multiple query embeddings and fuse via RRF.
+
+    Falls back to plain single-query retrieval when given <=1 vectors.
+    """
+    if not query_vectors:
+        return []
+    if len(query_vectors) == 1:
+        return _retrieve(conn, user_id, query_vectors[0], document_id=document_id)
+
+    rankings: list[list[int]] = []
+    by_id: dict[int, dict] = {}
+    for vec in query_vectors:
+        rows = _retrieve(conn, user_id, vec, document_id=document_id)
+        rankings.append([row["id"] for row in rows])
+        for row in rows:
+            by_id.setdefault(row["id"], row)
+
+    fused_ids = query_expansion.rrf_merge(rankings, limit=settings.top_k)
+    return [by_id[cid] for cid in fused_ids if cid in by_id]
 
 
 def _retrieve(

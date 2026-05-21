@@ -136,6 +136,45 @@ def test_answer_question_packs_chunks_under_budget(monkeypatch, tmp_path: Path) 
     assert len(sources) == seen_chunk_counts[0]
 
 
+def test_answer_question_multi_query_invokes_expansion(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "rag-mq.db"
+    monkeypatch.setattr(settings, "db_path", str(db_path))
+    monkeypatch.setattr(settings, "top_k", 5)
+    monkeypatch.setattr(settings, "chunk_size", 10_000)
+    monkeypatch.setattr(settings, "chunk_overlap", 10)
+    monkeypatch.setattr(settings, "multi_query_enabled", True)
+    monkeypatch.setattr(settings, "multi_query_variants", 2)
+
+    dim = settings.embedding_dim
+    monkeypatch.setattr(
+        rag.query_expansion, "expand",
+        lambda q, n=3: [q, f"{q} alt1", f"{q} alt2"],
+    )
+    embed_calls: list[list[str]] = []
+
+    def fake_embed(texts: list[str]) -> list[list[float]]:
+        embed_calls.append(list(texts))
+        return [_vec(dim) for _ in texts]
+
+    monkeypatch.setattr(rag.embeddings, "embed", fake_embed)
+    monkeypatch.setattr(rag.llm, "answer", lambda question, chunks: "ok")
+
+    conn = get_conn()
+    try:
+        init_schema(conn)
+    finally:
+        conn.close()
+
+    rag.ingest_document(user_id=1, filename="a.txt", text="alpha doc")
+
+    answer, sources = rag.answer_question(user_id=1, question="orig")
+
+    assert answer == "ok"
+    assert sources
+    # Embeddings should have been called for the multi-query batch (3 variants).
+    assert any(len(call) == 3 for call in embed_calls), embed_calls
+
+
 def test_retrieve_returns_no_rows_for_user_without_docs(monkeypatch, tmp_path: Path) -> None:
     db_path = tmp_path / "rag-empty.db"
     monkeypatch.setattr(settings, "db_path", str(db_path))

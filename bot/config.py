@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     # separately. Tuned for free-tier models with ~32k windows.
     answer_context_budget_tokens: int = 6000
 
+    # Multi-query expansion: 1 extra LLM call paraphrases the question,
+    # results are fused via Reciprocal Rank Fusion. Off by default — costs
+    # an extra round-trip and is only worth it on long-form documents.
+    multi_query_enabled: bool = False
+    multi_query_variants: int = 3
+
     # Embeddings — multilingual model supporting 50+ languages (EN/RU/DE/etc.)
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     embedding_dim: int = 384
