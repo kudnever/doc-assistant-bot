@@ -571,11 +571,15 @@ def _answer_text(answer_text: str, sources: list[dict], locale: str) -> str:
         )
         for i, source in enumerate(sources, start=1)
     ]
+    doc_ids = {src.get("document_id") for src in sources if src.get("document_id") is not None}
+    header = ""
+    if len(doc_ids) > 1:
+        header = t("answer_cross_doc_summary", locale, doc_count=len(doc_ids))
     return t(
         "answer_message",
         locale,
         answer=html.escape(answer_text),
-        sources="\n".join(source_lines),
+        sources=header + "\n".join(source_lines),
     )
 
 

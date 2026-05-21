@@ -45,6 +45,59 @@ def test_retrieval_isolation_by_user_id(monkeypatch, tmp_path: Path) -> None:
     assert {src["filename"] for src in sources}.issubset({"u1_a.txt", "u1_b.txt"})
 
 
+def test_answer_question_scoped_to_document(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "rag-scope.db"
+    monkeypatch.setattr(settings, "db_path", str(db_path))
+    monkeypatch.setattr(settings, "top_k", 10)
+    monkeypatch.setattr(settings, "chunk_size", 10_000)
+    monkeypatch.setattr(settings, "chunk_overlap", 10)
+
+    dim = settings.embedding_dim
+    monkeypatch.setattr(rag.embeddings, "embed", lambda texts: [_vec(dim) for _ in texts])
+    monkeypatch.setattr(rag.llm, "answer", lambda question, chunks: "ok")
+
+    conn = get_conn()
+    try:
+        init_schema(conn)
+    finally:
+        conn.close()
+
+    doc_a = rag.ingest_document(user_id=1, filename="a.txt", text="alpha")
+    rag.ingest_document(user_id=1, filename="b.txt", text="beta")
+
+    _, sources = rag.answer_question(user_id=1, question="q", document_id=doc_a)
+
+    assert sources, "expected at least one source"
+    assert all(src["filename"] == "a.txt" for src in sources)
+    assert all(src["document_id"] == doc_a for src in sources)
+
+
+def test_answer_question_returns_document_id_in_sources(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "rag-docid.db"
+    monkeypatch.setattr(settings, "db_path", str(db_path))
+    monkeypatch.setattr(settings, "top_k", 10)
+    monkeypatch.setattr(settings, "chunk_size", 10_000)
+    monkeypatch.setattr(settings, "chunk_overlap", 10)
+
+    dim = settings.embedding_dim
+    monkeypatch.setattr(rag.embeddings, "embed", lambda texts: [_vec(dim) for _ in texts])
+    monkeypatch.setattr(rag.llm, "answer", lambda question, chunks: "ok")
+
+    conn = get_conn()
+    try:
+        init_schema(conn)
+    finally:
+        conn.close()
+
+    doc_a = rag.ingest_document(user_id=1, filename="a.txt", text="alpha")
+    doc_b = rag.ingest_document(user_id=1, filename="b.txt", text="beta")
+
+    _, sources = rag.answer_question(user_id=1, question="q")
+
+    doc_ids = {src["document_id"] for src in sources}
+    assert doc_ids == {doc_a, doc_b}
+
+
 def test_retrieve_returns_no_rows_for_user_without_docs(monkeypatch, tmp_path: Path) -> None:
     db_path = tmp_path / "rag-empty.db"
     monkeypatch.setattr(settings, "db_path", str(db_path))

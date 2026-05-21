@@ -19,5 +19,30 @@ class SourceLineFormattingTests(unittest.TestCase):
         self.assertIn("↳ <i>line &lt;b&gt;tag&lt;/b&gt; &amp; more</i>", rendered)
 
 
+class CrossDocSummaryTests(unittest.TestCase):
+    def test_no_summary_when_single_document(self) -> None:
+        from bot.handlers import _answer_text
+
+        rendered = _answer_text(
+            "ans",
+            [{"document_id": 1, "filename": "a.txt", "idx": 1, "text_preview": "p"}],
+            "en",
+        )
+        self.assertNotIn("Across", rendered)
+
+    def test_summary_present_when_multiple_documents(self) -> None:
+        from bot.handlers import _answer_text
+
+        rendered = _answer_text(
+            "ans",
+            [
+                {"document_id": 1, "filename": "a.txt", "idx": 1, "text_preview": "p"},
+                {"document_id": 2, "filename": "b.txt", "idx": 1, "text_preview": "q"},
+            ],
+            "en",
+        )
+        self.assertIn("Across 2 documents", rendered)
+
+
 if __name__ == "__main__":
     unittest.main()
