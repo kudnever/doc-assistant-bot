@@ -390,6 +390,15 @@ Use /list to delete a single document, or /reset to delete all documents and chu
         "zh": "<i>未能在您的文档中找到相关内容。</i>",
         "pt": "<i>Não encontrei isto nos seus documentos.</i>",
     },
+    "answer_streaming_placeholder": {
+        "en": "<i>Thinking…</i>",
+        "ru": "<i>Думаю…</i>",
+        "es": "<i>Pensando…</i>",
+        "de": "<i>Denke nach…</i>",
+        "fr": "<i>Réflexion…</i>",
+        "zh": "<i>思考中…</i>",
+        "pt": "<i>Pensando…</i>",
+    },
     "answer_cross_doc_summary": {
         "en": "<i>Across {doc_count} documents.</i>\n",
         "ru": "<i>Из {doc_count} документов.</i>\n",

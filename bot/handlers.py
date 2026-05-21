@@ -1,3 +1,4 @@
+import asyncio
 import html
 import logging
 import pathlib
@@ -218,6 +219,10 @@ async def upload_document(message: Message) -> None:
 async def question(message: Message) -> None:
     user_id = message.from_user.id
     locale = db.get_locale(user_id)
+    if settings.stream_answers:
+        await _answer_streaming(message, user_id, locale)
+        return
+
     try:
         answer_text, sources = rag.answer_question(user_id, message.text)
     except Exception:
@@ -229,6 +234,57 @@ async def question(message: Message) -> None:
         return
 
     await message.answer(_answer_text(answer_text, sources, locale))
+
+
+async def _answer_streaming(message: Message, user_id: int, locale: str) -> None:
+    """Stream answer tokens into a placeholder, throttled to Telegram's edit rate."""
+    try:
+        sources, stream = await asyncio.to_thread(
+            rag.answer_question_stream, user_id, message.text
+        )
+    except Exception:
+        await message.answer(t("rate_limited", locale))
+        return
+
+    if not sources:
+        # rag returned the "not found" sentinel as the only stream item
+        await message.answer(t("answer_not_found", locale))
+        return
+
+    placeholder = await message.answer(t("answer_streaming_placeholder", locale))
+    buffer: list[str] = []
+    loop = asyncio.get_event_loop()
+    last_edit = 0.0
+
+    def _next():
+        try:
+            return next(stream)
+        except StopIteration:
+            return None
+        except Exception:  # noqa: BLE001 — stream errors must not crash the handler
+            return None
+
+    try:
+        while True:
+            chunk = await asyncio.to_thread(_next)
+            if chunk is None:
+                break
+            buffer.append(chunk)
+            now = loop.time()
+            if now - last_edit >= settings.stream_edit_interval_sec:
+                partial = html.escape("".join(buffer))
+                await _safe_edit_text(placeholder, partial or "…")
+                last_edit = now
+    except Exception:
+        await _safe_edit_text(placeholder, t("rate_limited", locale))
+        return
+
+    final_text = "".join(buffer).strip()
+    if not final_text or _not_found(final_text):
+        await _safe_edit_text(placeholder, t("answer_not_found", locale))
+        return
+
+    await _safe_edit_text(placeholder, _answer_text(final_text, sources, locale))
 
 
 @router.callback_query(F.data.startswith("lang:"))

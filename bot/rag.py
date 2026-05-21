@@ -120,6 +120,74 @@ def answer_question(
     return answer_text, sources
 
 
+def answer_question_stream(
+    user_id: int,
+    question: str,
+    document_id: int | None = None,
+):
+    """Streaming variant of answer_question.
+
+    Returns (sources, stream_iter). The iterator yields incremental text
+    deltas from the LLM. Sources are computed up-front from retrieval and
+    are stable across the stream.
+
+    When retrieval returns nothing, sources is [] and stream_iter yields
+    the single "not found" sentinel so the caller can render it uniformly.
+    """
+    queries = (
+        query_expansion.expand(question, n=settings.multi_query_variants)
+        if settings.multi_query_enabled
+        else [question]
+    )
+    query_vectors = embeddings.embed(queries) if queries else []
+    conn = get_conn()
+    try:
+        rows = _retrieve_multi(
+            conn, user_id, query_vectors, document_id=document_id
+        )
+    finally:
+        conn.close()
+
+    if not rows:
+        return [], iter(["I could not find this in the uploaded documents."])
+
+    chunks = [
+        {
+            "document_id": row["document_id"],
+            "filename": row["filename"],
+            "chunk_idx": row["chunk_idx"],
+            "text": row["text"],
+        }
+        for row in rows
+    ]
+    chunks, dropped = tokens.pack_chunks(
+        chunks, budget=settings.answer_context_budget_tokens
+    )
+    if dropped:
+        log.info(
+            "answer prompt trimmed: kept=%d dropped=%d budget=%d",
+            len(chunks),
+            dropped,
+            settings.answer_context_budget_tokens,
+        )
+    if not chunks:
+        return [], iter(["I could not find this in the uploaded documents."])
+
+    for i, chunk in enumerate(chunks, start=1):
+        chunk["idx_in_prompt"] = i
+
+    sources = [
+        {
+            "document_id": chunk["document_id"],
+            "filename": chunk["filename"],
+            "idx": chunk["chunk_idx"],
+            "text_preview": chunk["text"][:180].replace("\n", " "),
+        }
+        for chunk in chunks
+    ]
+    return sources, llm.answer_stream(question, chunks)
+
+
 def count_user_documents(user_id: int) -> int:
     conn = get_conn()
     try:

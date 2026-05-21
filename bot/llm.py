@@ -53,6 +53,32 @@ def answer(question: str, chunks: list[dict]) -> str:
     return content
 
 
+def answer_stream(question: str, chunks: list[dict]):
+    """Yield incremental text deltas for the answer prompt.
+
+    Sync generator wrapping the OpenAI streaming chat API. Callers in async
+    code should pump it via asyncio.to_thread per next().
+    """
+    formatted_chunks = "\n\n".join(
+        f"[{chunk['idx_in_prompt']}] {chunk['filename']} chunk {chunk['chunk_idx']}:\n{chunk['text']}"
+        for chunk in chunks
+    )
+    prompt = ANSWER_PROMPT.format(chunks=formatted_chunks, question=question)
+    client = _get_client()
+    stream = client.chat.completions.create(
+        model=settings.answer_model,
+        max_tokens=settings.answer_max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+        stream=True,
+    )
+    for event in stream:
+        if not event.choices:
+            continue
+        delta = getattr(event.choices[0].delta, "content", None) or ""
+        if delta:
+            yield delta
+
+
 def complete(prompt: str, max_tokens: int | None = None) -> str:
     client = _get_client()
     response = client.chat.completions.create(

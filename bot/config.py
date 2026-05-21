@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     multi_query_enabled: bool = False
     multi_query_variants: int = 3
 
+    # Stream answers token-by-token into Telegram (edits the placeholder
+    # message ~1/sec to stay under Telegram's edit rate limit).
+    stream_answers: bool = True
+    stream_edit_interval_sec: float = 1.1
+
     # Embeddings — multilingual model supporting 50+ languages (EN/RU/DE/etc.)
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     embedding_dim: int = 384
