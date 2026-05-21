@@ -98,6 +98,44 @@ def test_answer_question_returns_document_id_in_sources(monkeypatch, tmp_path: P
     assert doc_ids == {doc_a, doc_b}
 
 
+def test_answer_question_packs_chunks_under_budget(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "rag-budget.db"
+    monkeypatch.setattr(settings, "db_path", str(db_path))
+    monkeypatch.setattr(settings, "top_k", 10)
+    monkeypatch.setattr(settings, "chunk_size", 10_000)
+    monkeypatch.setattr(settings, "chunk_overlap", 10)
+    # Force aggressive trimming — budget so small only ~1 chunk fits.
+    monkeypatch.setattr(settings, "answer_context_budget_tokens", 100)
+
+    dim = settings.embedding_dim
+    monkeypatch.setattr(rag.embeddings, "embed", lambda texts: [_vec(dim) for _ in texts])
+
+    seen_chunk_counts: list[int] = []
+
+    def fake_answer(question: str, chunks: list[dict]) -> str:
+        seen_chunk_counts.append(len(chunks))
+        return "ok"
+
+    monkeypatch.setattr(rag.llm, "answer", fake_answer)
+
+    conn = get_conn()
+    try:
+        init_schema(conn)
+    finally:
+        conn.close()
+
+    for i in range(4):
+        rag.ingest_document(user_id=1, filename=f"d{i}.txt", text="word " * 30)
+
+    _, sources = rag.answer_question(user_id=1, question="q")
+
+    assert seen_chunk_counts and seen_chunk_counts[0] < 4, (
+        "expected packing to drop some chunks under tight budget"
+    )
+    # Sources should mirror what was actually sent to the LLM.
+    assert len(sources) == seen_chunk_counts[0]
+
+
 def test_retrieve_returns_no_rows_for_user_without_docs(monkeypatch, tmp_path: Path) -> None:
     db_path = tmp_path / "rag-empty.db"
     monkeypatch.setattr(settings, "db_path", str(db_path))

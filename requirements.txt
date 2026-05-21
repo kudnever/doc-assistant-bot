@@ -5,3 +5,4 @@ sqlite-vec>=0.1.6
 pypdf>=5,<7
 python-docx>=1,<2
 pydantic-settings>=2,<3
+tiktoken>=0.7,<1

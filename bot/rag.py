@@ -1,12 +1,17 @@
 import sqlite3
 from datetime import datetime, timezone
 
+import logging
+
 import sqlite_vec
 
-from . import embeddings, llm
+from . import embeddings, llm, tokens
 from .chunker import chunk_text
 from .config import settings
 from .db import get_conn
+
+
+log = logging.getLogger("doc-assistant.rag")
 
 
 def ingest_document(user_id: int, filename: str, text: str) -> int:
@@ -74,14 +79,27 @@ def answer_question(
 
     chunks = [
         {
-            "idx_in_prompt": i,
             "document_id": row["document_id"],
             "filename": row["filename"],
             "chunk_idx": row["chunk_idx"],
             "text": row["text"],
         }
-        for i, row in enumerate(rows, start=1)
+        for row in rows
     ]
+    chunks, dropped = tokens.pack_chunks(
+        chunks, budget=settings.answer_context_budget_tokens
+    )
+    if dropped:
+        log.info(
+            "answer prompt trimmed: kept=%d dropped=%d budget=%d",
+            len(chunks),
+            dropped,
+            settings.answer_context_budget_tokens,
+        )
+    if not chunks:
+        return 'I could not find this in the uploaded documents.', []
+    for i, chunk in enumerate(chunks, start=1):
+        chunk["idx_in_prompt"] = i
     answer_text = llm.answer(question, chunks)
     sources = [
         {

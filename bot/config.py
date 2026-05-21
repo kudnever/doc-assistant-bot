@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     answer_model: str = "deepseek/deepseek-v4-flash:free"
     answer_max_tokens: int = 1024
+    # Greedy chunk packing budget for the answer prompt's context block.
+    # Excludes the question and template overhead — those are accounted for
+    # separately. Tuned for free-tier models with ~32k windows.
+    answer_context_budget_tokens: int = 6000
 
     # Embeddings — multilingual model supporting 50+ languages (EN/RU/DE/etc.)
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
