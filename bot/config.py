@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     embedding_dim: int = 384
 
     # Optional OpenRouter ranking headers
-    app_url: str = "https://github.com/kudnever/doc-assistant-bot"
+    app_url: str = "https://github.com/IliaMalkin/doc-assistant-bot"
     app_title: str = "doc-assistant-bot"
 
 

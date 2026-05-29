@@ -6,7 +6,7 @@ Single-process Python with SQLite, sqlite-vec, fastembed (multilingual MiniLM) e
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Stack](https://img.shields.io/badge/stack-aiogram%20%7C%20OpenRouter%20%7C%20sqlite--vec-lightgrey)
-![CI](https://github.com/kudnever/doc-assistant-bot/actions/workflows/ci.yml/badge.svg?branch=master)
+![CI](https://github.com/IliaMalkin/doc-assistant-bot/actions/workflows/ci.yml/badge.svg?branch=master)
 
 **Live demo:** [@assistantdocumentbot](https://t.me/assistantdocumentbot) — may be offline when the maintainer's machine is off. Deploy your own in five minutes with the setup section below.
 
