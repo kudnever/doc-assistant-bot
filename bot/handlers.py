@@ -1,4 +1,6 @@
+import asyncio
 import html
+import logging
 import pathlib
 import tempfile
 from datetime import datetime
@@ -8,12 +10,14 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
-from . import db, keyboards, parsers, rag
+from . import db, keyboards, parsers, rag, studio
 from .config import settings
 from .i18n import LOCALES, t
 
 
 router = Router()
+_quiz_store = studio.QuizStore()
+log = logging.getLogger("doc-assistant")
 
 
 async def _safe_edit_text(message, text, **kwargs):
@@ -70,6 +74,41 @@ async def help_(message: Message) -> None:
     user_id = message.from_user.id
     locale = db.get_locale(user_id)
     await message.answer(t("help", locale, max_file_mb=settings.max_file_mb))
+
+
+@router.message(Command("brief"))
+async def brief(message: Message) -> None:
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
+    await _send_studio_artifact(message, user_id, locale, "brief")
+
+
+@router.message(Command("faq"))
+async def faq(message: Message) -> None:
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
+    await _send_studio_artifact(message, user_id, locale, "faq")
+
+
+@router.message(Command("mindmap"))
+async def mindmap(message: Message) -> None:
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
+    await _send_studio_artifact(message, user_id, locale, "mindmap")
+
+
+@router.message(Command("quiz"))
+async def quiz(message: Message) -> None:
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
+    await _send_quiz(message, user_id, locale)
+
+
+@router.message(Command("privacy"))
+async def privacy(message: Message) -> None:
+    user_id = message.from_user.id
+    locale = db.get_locale(user_id)
+    await message.answer(t("privacy", locale))
 
 
 @router.message(Command("list"))
@@ -151,7 +190,16 @@ async def upload_document(message: Message) -> None:
                 locale,
                 filename=safe_filename,
                 chunk_count=chunk_count,
-            )
+            ),
+            reply_markup=keyboards.studio_keyboard(document_id, locale),
+        )
+        await _send_studio_artifact(
+            message,
+            user_id,
+            locale,
+            "overview",
+            document_id,
+            fallback_on_error=True,
         )
     except ValueError as exc:
         await progress.edit_text(
@@ -171,6 +219,10 @@ async def upload_document(message: Message) -> None:
 async def question(message: Message) -> None:
     user_id = message.from_user.id
     locale = db.get_locale(user_id)
+    if settings.stream_answers:
+        await _answer_streaming(message, user_id, locale)
+        return
+
     try:
         answer_text, sources = rag.answer_question(user_id, message.text)
     except Exception:
@@ -182,6 +234,57 @@ async def question(message: Message) -> None:
         return
 
     await message.answer(_answer_text(answer_text, sources, locale))
+
+
+async def _answer_streaming(message: Message, user_id: int, locale: str) -> None:
+    """Stream answer tokens into a placeholder, throttled to Telegram's edit rate."""
+    try:
+        sources, stream = await asyncio.to_thread(
+            rag.answer_question_stream, user_id, message.text
+        )
+    except Exception:
+        await message.answer(t("rate_limited", locale))
+        return
+
+    if not sources:
+        # rag returned the "not found" sentinel as the only stream item
+        await message.answer(t("answer_not_found", locale))
+        return
+
+    placeholder = await message.answer(t("answer_streaming_placeholder", locale))
+    buffer: list[str] = []
+    loop = asyncio.get_event_loop()
+    last_edit = 0.0
+
+    def _next():
+        try:
+            return next(stream)
+        except StopIteration:
+            return None
+        except Exception:  # noqa: BLE001 — stream errors must not crash the handler
+            return None
+
+    try:
+        while True:
+            chunk = await asyncio.to_thread(_next)
+            if chunk is None:
+                break
+            buffer.append(chunk)
+            now = loop.time()
+            if now - last_edit >= settings.stream_edit_interval_sec:
+                partial = html.escape("".join(buffer))
+                await _safe_edit_text(placeholder, partial or "…")
+                last_edit = now
+    except Exception:
+        await _safe_edit_text(placeholder, t("rate_limited", locale))
+        return
+
+    final_text = "".join(buffer).strip()
+    if not final_text or _not_found(final_text):
+        await _safe_edit_text(placeholder, t("answer_not_found", locale))
+        return
+
+    await _safe_edit_text(placeholder, _answer_text(final_text, sources, locale))
 
 
 @router.callback_query(F.data.startswith("lang:"))
@@ -218,6 +321,83 @@ async def open_settings(callback: CallbackQuery) -> None:
         await callback.message.answer(
             _settings_text(user_id, locale),
             reply_markup=keyboards.settings_keyboard(locale),
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("studio:"))
+async def studio_callback(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    locale = db.get_locale(user_id)
+    _, kind, raw_doc_id = callback.data.split(":", 2)
+    document_id = int(raw_doc_id)
+    if not callback.message:
+        await callback.answer()
+        return
+    if kind == "privacy":
+        await callback.message.answer(t("privacy", locale))
+    elif kind == "quiz":
+        await _send_quiz(callback.message, user_id, locale, document_id)
+    else:
+        await _send_studio_artifact(
+            callback.message, user_id, locale, kind, document_id
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("quiznext:"))
+async def quiz_next(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    locale = db.get_locale(user_id)
+    _, token, raw_index = callback.data.split(":", 2)
+    item = _quiz_store.get(token, user_id)
+    if not item or not callback.message:
+        await callback.answer()
+        return
+    question_index = int(raw_index)
+    if question_index < 0 or question_index >= len(item["questions"]):
+        await callback.answer()
+        return
+    await _safe_edit_text(
+        callback.message,
+        _quiz_question_text(item, question_index, locale),
+        reply_markup=keyboards.quiz_question_keyboard(
+            token,
+            question_index,
+            item["questions"][question_index]["options"],
+        ),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("quiz:"))
+async def quiz_answer(callback: CallbackQuery) -> None:
+    user_id = callback.from_user.id
+    locale = db.get_locale(user_id)
+    _, token, raw_question_index, raw_answer_index = callback.data.split(":", 3)
+    item = _quiz_store.get(token, user_id)
+    if not item or not callback.message:
+        await callback.answer()
+        return
+    question_index = int(raw_question_index)
+    answer_index = int(raw_answer_index)
+    if question_index < 0 or question_index >= len(item["questions"]):
+        await callback.answer()
+        return
+    next_index = question_index + 1
+    reply_markup = (
+        keyboards.quiz_next_keyboard(token, next_index, locale)
+        if next_index < len(item["questions"])
+        else None
+    )
+    await _safe_edit_text(
+        callback.message,
+        _quiz_answer_text(item, question_index, answer_index, locale),
+        reply_markup=reply_markup,
+    )
+    if next_index >= len(item["questions"]):
+        await callback.message.answer(
+            t("quiz_done", locale, filename=html.escape(str(item["filename"])))
         )
     await callback.answer()
 
@@ -315,6 +495,126 @@ def _welcome_text(locale: str) -> str:
     return t("welcome", locale, max_file_mb=settings.max_file_mb)
 
 
+async def _send_studio_artifact(
+    message: Message,
+    user_id: int,
+    locale: str,
+    kind: str,
+    document_id: int | None = None,
+    fallback_on_error: bool = False,
+) -> None:
+    context = rag.get_document_context(user_id, document_id=document_id)
+    if not context:
+        await message.answer(t("studio_empty", locale))
+        return
+    filename = html.escape(str(context["document"]["filename"]))
+    progress = await message.answer(
+        t(
+            "studio_working",
+            locale,
+            artifact=t(f"artifact_{kind}", locale),
+            filename=filename,
+        )
+    )
+    try:
+        body, document = studio.generate_artifact(
+            user_id, kind, locale, document_id=document_id
+        )
+    except Exception as exc:
+        log.warning("studio artifact generation failed: kind=%s", kind, exc_info=exc)
+        if fallback_on_error and kind == "overview":
+            body = studio.fallback_overview(context["document"], context["chunks"])
+            document = context["document"]
+        else:
+            await progress.edit_text(t("studio_error", locale))
+            return
+    if not body or not document:
+        await progress.edit_text(t("studio_error", locale))
+        return
+    await progress.edit_text(
+        t(
+            "studio_result",
+            locale,
+            title=t(f"artifact_{kind}", locale).title(),
+            filename=html.escape(str(document["filename"])),
+            body=html.escape(body),
+        )
+    )
+
+
+async def _send_quiz(
+    message: Message,
+    user_id: int,
+    locale: str,
+    document_id: int | None = None,
+) -> None:
+    context = rag.get_document_context(user_id, document_id=document_id)
+    if not context:
+        await message.answer(t("studio_empty", locale))
+        return
+    filename = html.escape(str(context["document"]["filename"]))
+    progress = await message.answer(
+        t(
+            "studio_working",
+            locale,
+            artifact=t("artifact_quiz", locale),
+            filename=filename,
+        )
+    )
+    try:
+        questions, document = studio.generate_quiz(
+            user_id, locale, document_id=document_id
+        )
+    except Exception:
+        await progress.edit_text(t("studio_error", locale))
+        return
+    token = _quiz_store.create(user_id, questions, str(document["filename"]))
+    await progress.edit_text(
+        _quiz_question_text(_quiz_store.get(token, user_id), 0, locale),
+        reply_markup=keyboards.quiz_question_keyboard(
+            token, 0, questions[0]["options"]
+        ),
+    )
+
+
+def _quiz_question_text(item: dict, question_index: int, locale: str) -> str:
+    question = item["questions"][question_index]
+    return t(
+        "quiz_title",
+        locale,
+        filename=html.escape(str(item["filename"])),
+        number=question_index + 1,
+        total=len(item["questions"]),
+        question=html.escape(question["question"]),
+    )
+
+
+def _quiz_answer_text(
+    item: dict, question_index: int, answer_index: int, locale: str
+) -> str:
+    question = item["questions"][question_index]
+    correct_index = question["answer_index"]
+    if answer_index == correct_index:
+        result = t("quiz_correct", locale)
+    else:
+        result = t(
+            "quiz_wrong",
+            locale,
+            answer=html.escape(question["options"][correct_index]),
+        )
+    return t(
+        "quiz_answered",
+        locale,
+        filename=html.escape(str(item["filename"])),
+        number=question_index + 1,
+        total=len(item["questions"]),
+        question=html.escape(question["question"]),
+        result=result,
+        explanation=html.escape(question["explanation"]),
+        citation=html.escape(question["citation"]),
+    )
+
+
 def _answer_text(answer_text: str, sources: list[dict], locale: str) -> str:
     source_lines = [
         t(
@@ -327,11 +627,15 @@ def _answer_text(answer_text: str, sources: list[dict], locale: str) -> str:
         )
         for i, source in enumerate(sources, start=1)
     ]
+    doc_ids = {src.get("document_id") for src in sources if src.get("document_id") is not None}
+    header = ""
+    if len(doc_ids) > 1:
+        header = t("answer_cross_doc_summary", locale, doc_count=len(doc_ids))
     return t(
         "answer_message",
         locale,
         answer=html.escape(answer_text),
-        sources="\n".join(source_lines),
+        sources=header + "\n".join(source_lines),
     )
 
 

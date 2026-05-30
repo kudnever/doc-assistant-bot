@@ -15,11 +15,18 @@ STRINGS: dict[str, dict[str, str]] = {
     "welcome": {
         "en": """<b>Document Assistant</b>
 
-Upload a PDF, DOCX, or TXT document and ask questions about its content. Answers include numbered citations to the source passages.
+Upload a PDF, DOCX, or TXT file and ask questions about it. The bot answers only from your documents and shows numbered source citations.
+
+Your files are stored locally for your Telegram account. Embeddings run locally; only the most relevant text fragments are sent to the configured LLM provider to generate an answer. You can delete one document from /list or wipe everything with /reset.
 
 <b>Commands</b>
 /list — indexed documents
 /settings — language and account
+/privacy — how document data is handled
+/brief — executive summary
+/faq — questions and answers
+/quiz — interactive quiz
+/mindmap — topic map
 /reset — delete all data
 /help — usage guide
 
@@ -31,6 +38,11 @@ Max file size: {max_file_mb} MB""",
 <b>Команды</b>
 /list — индексированные документы
 /settings — язык и учётная запись
+/privacy — как обрабатываются документы
+/brief — краткий бриф
+/faq — вопросы и ответы
+/quiz — интерактивный тест
+/mindmap — карта тем
 /reset — удалить все данные
 /help — руководство
 
@@ -177,6 +189,90 @@ Tamanho máximo do arquivo: {max_file_mb} MB""",
 • Os embeddings são executados localmente na CPU. O conteúdo não é enviado a serviços externos.
 • As respostas são geradas por um LLM e podem estar incompletas; verifique nas fontes citadas.""",
     },
+    "privacy": {
+        "en": """<b>Privacy and security</b>
+
+<b>What is stored</b>
+Your uploaded document text, filenames, and local embeddings are stored in this bot's SQLite database and linked to your Telegram user ID.
+
+<b>What leaves the bot</b>
+Embeddings are created locally. When you ask a question, the bot sends your question plus the most relevant document fragments to the configured LLM provider through OpenRouter. Full files are not sent for every answer.
+
+<b>Access control</b>
+Searches and document lists are filtered by your Telegram user ID, so other users cannot query your indexed documents through the bot.
+
+<b>Control</b>
+Use /list to delete a single document, or /reset to delete all documents and chunks for your account.""",
+        "ru": """<b>Приватность и безопасность</b>
+
+<b>Что хранится</b>
+Текст загруженных документов, имена файлов и локальные эмбеддинги хранятся в SQLite-базе этого бота и привязаны к вашему Telegram user ID.
+
+<b>Что уходит наружу</b>
+Эмбеддинги считаются локально. Когда вы задаёте вопрос, бот отправляет ваш вопрос и самые релевантные фрагменты документов в настроенного LLM-провайдера через OpenRouter. Полные файлы не отправляются для каждого ответа.
+
+<b>Разделение доступа</b>
+Поиск и список документов фильтруются по вашему Telegram user ID, поэтому другие пользователи не могут спрашивать бот по вашим индексированным документам.
+
+<b>Контроль</b>
+Используйте /list, чтобы удалить один документ, или /reset, чтобы удалить все документы и фрагменты для вашего аккаунта.""",
+    },
+    "studio_empty": {
+        "en": "No indexed documents yet. Send a PDF, DOCX, or TXT file first.",
+        "ru": "Пока нет индексированных документов. Сначала отправьте PDF, DOCX или TXT.",
+    },
+    "studio_working": {
+        "en": "Preparing <b>{artifact}</b> for <code>{filename}</code>...",
+        "ru": "Готовлю <b>{artifact}</b> для <code>{filename}</code>...",
+    },
+    "studio_error": {
+        "en": "The LLM provider is rate-limited right now. The document is indexed; please try this action again in a moment.",
+        "ru": "Сейчас сработал лимит LLM-провайдера. Документ уже проиндексирован; попробуйте это действие ещё раз через минуту.",
+    },
+    "artifact_overview": {
+        "en": "overview",
+        "ru": "обзор",
+    },
+    "artifact_brief": {
+        "en": "brief",
+        "ru": "бриф",
+    },
+    "artifact_faq": {
+        "en": "FAQ",
+        "ru": "FAQ",
+    },
+    "artifact_quiz": {
+        "en": "quiz",
+        "ru": "тест",
+    },
+    "artifact_mindmap": {
+        "en": "mind map",
+        "ru": "карту тем",
+    },
+    "studio_result": {
+        "en": "<b>{title}</b>\n<code>{filename}</code>\n\n{body}",
+        "ru": "<b>{title}</b>\n<code>{filename}</code>\n\n{body}",
+    },
+    "quiz_title": {
+        "en": "<b>Quiz</b>\n<code>{filename}</code>\n\n<b>{number}/{total}.</b> {question}",
+        "ru": "<b>Тест</b>\n<code>{filename}</code>\n\n<b>{number}/{total}.</b> {question}",
+    },
+    "quiz_correct": {
+        "en": "Correct.",
+        "ru": "Верно.",
+    },
+    "quiz_wrong": {
+        "en": "Not quite. Correct answer: <b>{answer}</b>",
+        "ru": "Не совсем. Правильный ответ: <b>{answer}</b>",
+    },
+    "quiz_answered": {
+        "en": "<b>Quiz</b>\n<code>{filename}</code>\n\n<b>{number}/{total}.</b> {question}\n\n{result}\n\n{explanation} {citation}",
+        "ru": "<b>Тест</b>\n<code>{filename}</code>\n\n<b>{number}/{total}.</b> {question}\n\n{result}\n\n{explanation} {citation}",
+    },
+    "quiz_done": {
+        "en": "<b>Quiz complete</b>\nYou finished all questions for <code>{filename}</code>.",
+        "ru": "<b>Тест завершён</b>\nВы ответили на все вопросы по <code>{filename}</code>.",
+    },
     "processing": {
         "en": "⏳ Processing <code>{filename}</code>…",
         "ru": "⏳ Обработка <code>{filename}</code>…",
@@ -293,6 +389,24 @@ Tamanho máximo do arquivo: {max_file_mb} MB""",
         "fr": "<i>Je n'ai pas trouvé cela dans vos documents.</i>",
         "zh": "<i>未能在您的文档中找到相关内容。</i>",
         "pt": "<i>Não encontrei isto nos seus documentos.</i>",
+    },
+    "answer_streaming_placeholder": {
+        "en": "<i>Thinking…</i>",
+        "ru": "<i>Думаю…</i>",
+        "es": "<i>Pensando…</i>",
+        "de": "<i>Denke nach…</i>",
+        "fr": "<i>Réflexion…</i>",
+        "zh": "<i>思考中…</i>",
+        "pt": "<i>Pensando…</i>",
+    },
+    "answer_cross_doc_summary": {
+        "en": "<i>Across {doc_count} documents.</i>\n",
+        "ru": "<i>Из {doc_count} документов.</i>\n",
+        "es": "<i>De {doc_count} documentos.</i>\n",
+        "de": "<i>Aus {doc_count} Dokumenten.</i>\n",
+        "fr": "<i>À partir de {doc_count} documents.</i>\n",
+        "zh": "<i>来自 {doc_count} 个文档。</i>\n",
+        "pt": "<i>De {doc_count} documentos.</i>\n",
     },
     "source_line": {
         "en": "[{number}] <code>{filename}</code> · chunk {idx}\n↳ <i>{preview}</i>",
@@ -436,6 +550,30 @@ Tamanho máximo do arquivo: {max_file_mb} MB""",
     "button_settings": {
         "en": "Settings", "ru": "Настройки", "es": "Configuración", "de": "Einstellungen",
         "fr": "Paramètres", "zh": "设置", "pt": "Configurações",
+    },
+    "button_privacy": {
+        "en": "Privacy", "ru": "Приватность", "es": "Privacy", "de": "Privacy",
+        "fr": "Privacy", "zh": "Privacy", "pt": "Privacy",
+    },
+    "button_brief": {
+        "en": "Brief", "ru": "Бриф", "es": "Brief", "de": "Brief",
+        "fr": "Brief", "zh": "Brief", "pt": "Brief",
+    },
+    "button_faq": {
+        "en": "FAQ", "ru": "FAQ", "es": "FAQ", "de": "FAQ",
+        "fr": "FAQ", "zh": "FAQ", "pt": "FAQ",
+    },
+    "button_quiz": {
+        "en": "Quiz", "ru": "Тест", "es": "Quiz", "de": "Quiz",
+        "fr": "Quiz", "zh": "Quiz", "pt": "Quiz",
+    },
+    "button_mindmap": {
+        "en": "Mind map", "ru": "Карта тем", "es": "Mind map", "de": "Mind map",
+        "fr": "Mind map", "zh": "Mind map", "pt": "Mind map",
+    },
+    "button_next_question": {
+        "en": "Next question", "ru": "Следующий вопрос", "es": "Next question", "de": "Next question",
+        "fr": "Next question", "zh": "Next question", "pt": "Next question",
     },
     "button_delete_all": {
         "en": "Delete all data", "ru": "Удалить все данные", "es": "Eliminar todos los datos",

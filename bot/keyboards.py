@@ -9,6 +9,9 @@ reset:yes / reset:no - confirm/cancel full reset
 del:<doc_id>      - open per-document delete confirm
 delc:<doc_id>     - confirm delete one document
 delx              - cancel any delete
+studio:<kind>:<doc_id> - generate a NotebookLM-style artifact
+quiz:<token>:<qidx>:<answer_idx> - answer a quiz question
+quiznext:<token>:<qidx> - move to the next quiz question
 """
 
 from aiogram.types import InlineKeyboardMarkup
@@ -47,6 +50,20 @@ def welcome_keyboard(locale: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def studio_keyboard(doc_id: int, locale: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for kind, key in (
+        ("brief", "button_brief"),
+        ("faq", "button_faq"),
+        ("quiz", "button_quiz"),
+        ("mindmap", "button_mindmap"),
+    ):
+        builder.button(text=t(key, locale), callback_data=f"studio:{kind}:{doc_id}")
+    builder.button(text=t("button_privacy", locale), callback_data=f"studio:privacy:{doc_id}")
+    builder.adjust(2, 2, 1)
+    return builder.as_markup()
+
+
 def settings_keyboard(locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for code in _LANGUAGE_ORDER:
@@ -72,12 +89,20 @@ def reset_confirm_keyboard(locale: str) -> InlineKeyboardMarkup:
 def documents_keyboard(documents: list[dict], locale: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for document in documents:
+        doc_id = document["id"]
         filename = _truncate_filename(str(document["filename"]))
+        for kind, key in (
+            ("brief", "button_brief"),
+            ("faq", "button_faq"),
+            ("quiz", "button_quiz"),
+            ("mindmap", "button_mindmap"),
+        ):
+            builder.button(text=t(key, locale), callback_data=f"studio:{kind}:{doc_id}")
         builder.button(
             text=t("button_delete_document", locale, filename=filename),
-            callback_data=f"del:{document['id']}",
+            callback_data=f"del:{doc_id}",
         )
-    builder.adjust(*([1] * len(documents)))
+    builder.adjust(*([3, 2] * len(documents)))
     return builder.as_markup()
 
 
@@ -86,6 +111,28 @@ def delete_confirm_keyboard(doc_id: int, locale: str) -> InlineKeyboardMarkup:
     builder.button(text=t("button_confirm", locale), callback_data=f"delc:{doc_id}")
     builder.button(text=t("button_cancel", locale), callback_data="delx")
     builder.adjust(2)
+    return builder.as_markup()
+
+
+def quiz_question_keyboard(
+    token: str, question_index: int, options: list[str]
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for idx, option in enumerate(options):
+        builder.button(
+            text=f"{chr(65 + idx)}. {_truncate_option(option)}",
+            callback_data=f"quiz:{token}:{question_index}:{idx}",
+        )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def quiz_next_keyboard(token: str, question_index: int, locale: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=t("button_next_question", locale),
+        callback_data=f"quiznext:{token}:{question_index}",
+    )
     return builder.as_markup()
 
 
@@ -101,3 +148,9 @@ def _truncate_filename(filename: str) -> str:
     if len(filename) <= 30:
         return filename
     return f"{filename[:29]}…"
+
+
+def _truncate_option(option: str) -> str:
+    if len(option) <= 38:
+        return option
+    return f"{option[:37]}…"
